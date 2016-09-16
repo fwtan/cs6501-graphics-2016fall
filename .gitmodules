@@ -1,0 +1,3 @@
+[submodule "project1/scikit-learn"]
+	path = project1/scikit-learn
+	url = git://github.com/scikit-learn/scikit-learn.git
