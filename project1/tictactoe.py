@@ -102,7 +102,8 @@ class TicTacToe(object):
                 train_X = np.vstack(( self.X[ N[ : i * nr_val], : ], self.X[ N[ (i+1) * nr_val : ], :] ))
                 train_y = np.vstack(( self.y[ N[ : i * nr_val], : ], self.y[ N[ (i+1) * nr_val : ], :] ))
 
-            train_y = self.corrupt_label(train_y)
+            # corrupt data
+            # train_y = self.corrupt_label(train_y)
 
             # # switch train val
             # tmp_X = np.copy(val_X)
@@ -245,3 +246,24 @@ class Player(object):
             print 'AI win.'
         else:
             print 'Draw.'
+
+if __name__ == '__main__':
+    tictac = TicTacToe()
+
+    tictac.load('data/tictac_final.txt')
+
+    print tictac.eval_classifier('lsvm')
+    print tictac.eval_classifier('knn')
+    print tictac.eval_classifier('mlp')
+
+    tictac.load('data/tictac_single.txt')
+
+    print tictac.eval_classifier('lsvm')
+    print tictac.eval_classifier('knn')
+    print tictac.eval_classifier('mlp')
+
+    tictac.load('data/tictac_multi.txt')
+
+    print tictac.eval_regressor('lin')
+    print tictac.eval_regressor('knn')
+    print tictac.eval_regressor('mlp')
