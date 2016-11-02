@@ -5,7 +5,6 @@ import time, math
 import cv2, cPickle
 from imdb import imdb
 from layers import *
-from glob import glob
 import numpy as np
 import tensorflow as tf
 
@@ -22,13 +21,13 @@ class colorization(object):
         self.bn = {}
 
         """Randomly permute the training roidb."""
-        self.train_perm  = np.random.permutation(np.arange(len(self.train_roidb)))
-        self.val_perm    = np.random.permutation(np.arange(len(self.val_roidb)))
+        self.train_perm  = np.random.permutation(range(len(self.train_roidb)))
+        self.val_perm    = np.random.permutation(range(len(self.val_roidb)))
 
         self.train_cur = 0
         self.val_cur   = 0
 
-        # batch_normalization
+        """batch_normalization"""
         for i in xrange(1,5):
             bn_name = 'cbn%d'%i
             self.bn['f_cbn%d'%i] = batch_normalization(scope=bn_name)
@@ -130,7 +129,7 @@ class colorization(object):
 
         # permute
         if cur + self.batch_size >= len(roidb):
-            perm = np.random.permutation(np.arange(len(roidb)))
+            perm = np.random.permutation(range(len(roidb)))
             cur = 0
 
         db_inds = perm[cur : cur + self.batch_size]
@@ -138,30 +137,49 @@ class colorization(object):
         #######################################################################
 
         for i in xrange(self.batch_size):
-            rois    = roidb[db_inds[i]]
-            im_path = rois['image']
+            roi     = roidb[db_inds[i]]
+            im_path = roi['image']
             im_name, im_ext = os.path.splitext(os.path.basename(im_path))
+            img = cv2.imread(im_path, cv2.IMREAD_COLOR)
 
-            im = cv2.imread(im_path, cv2.IMREAD_COLOR)
-            if rois['flipped']:
-                im = cv2.flip(im, 1)
-            im = im * rois['scale']
-            im = cv2.resize(im, (self.train_shape[1], self.train_shape[0]))
-            lab_im = cv2.cvtColor(im, cv2.COLOR_BGR2LAB)
-            l_channel,a_channel,b_channel = cv2.split(lab_im)
+            h = float(img.shape[0])
+            w = float(img.shape[1])
+            cropped_roi = roi['roi']
+            left    = int(np.minimum(np.maximum(0, w * cropped_roi[0]), w))
+            right   = int(np.minimum(np.maximum(0, w * cropped_roi[2]), w))
+            top     = int(np.minimum(np.maximum(0, h * cropped_roi[1]), h))
+            bottom  = int(np.minimum(np.maximum(0, h * cropped_roi[3]), h))
+            img     = img[top:bottom, left:right, :]
 
-            input_batch[i,:,:,:] = (l_channel - 128.0)
+            if roi['flipped']:
+                img = cv2.flip(img, 1)
+
+            img = np.minimum(np.maximum(0, img.astype(np.float32) * roi['scale']), 255).astype(np.uint16)
+
+            img = cv2.resize(img, (self.train_shape[1], self.train_shape[0])).astype(np.uint8)
+
+            lab_im = cv2.cvtColor(img, cv2.COLOR_BGR2LAB).astype(np.float32)
+
+            l_channel, a_channel, b_channel = cv2.split(lab_im)
+
+            # print("range:")
+            # print(np.amin(l_channel), np.amax(l_channel))
+            # print(np.amin(a_channel), np.amax(a_channel))
+            # print(np.amin(b_channel), np.amax(b_channel))
+
+            input_batch[i,:,:,:] = (l_channel - 128.0).reshape((self.train_shape[0], self.train_shape[1], 1))
+
             if mode == 'full':
-                target_batch[i,:,:,0] = (a_channel - 128.0)/128.0
-                target_batch[i,:,:,1] = (b_channel - 128.0)/128.0
+                target_batch[i,:,:,0] = (a_channel)/255.0
+                target_batch[i,:,:,1] = (b_channel)/255.0
             else:
-                target_batch[i,:,:,0] = (np.mean(a_channel) - 128.0)/128.0
-                target_batch[i,:,:,1] = (np.mean(b_channel) - 128.0)/128.0
+                target_batch[i,0] = (np.mean(a_channel))/255.0
+                target_batch[i,1] = (np.mean(b_channel))/255.0
 
             #######################################################################
             if vis:
                 output_path = os.path.join(output_dir, '%04d_'%i + im_name + im_ext)
-                cv2.imwrite(output_path, im)
+                cv2.imwrite(output_path, img)
             #######################################################################
         return input_batch, target_batch
 
@@ -187,7 +205,7 @@ class colorization(object):
                             k_h=3, k_w=3, d_h=2, d_w=2,
                             scope="deconv_out")
 
-            return tf.tanh(a)
+            return tf.sigmoid(a)
 
     def mean_inference(self, input_batch, train):
         input_shape = input_batch.get_shape().as_list()
@@ -197,49 +215,48 @@ class colorization(object):
             # conv1
             a = conv2d(input_batch, 96, k_h=7, k_w=7, d_h=2, d_w=2, scope='conv1')
             a = self.bn['m_bn1'](a, trainable=train)
-            a = leaky_relu(a)
+            a = tf.nn.relu(a)
             a = tf.nn.max_pool(a, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='VALID')
 
             # conv2
             a = conv2d(a, 256, k_h=5, k_w=5, d_h=2, d_w=2, scope='conv2')
             a = self.bn['m_bn2'](a, trainable=train)
-            a = leaky_relu(a)
+            a = tf.nn.relu(a)
             a = tf.nn.max_pool(a, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='VALID')
 
             # conv3
             a = conv2d(a, 384, k_h=3, k_w=3, d_h=1, d_w=1, scope='conv3')
             a = self.bn['m_bn3'](a, trainable=train)
-            a = leaky_relu(a)
+            a = tf.nn.relu(a)
             a = tf.nn.max_pool(a, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='VALID')
 
             # conv4
             a = conv2d(a, 384, k_h=3, k_w=3, d_h=1, d_w=1, scope='conv4')
             a = self.bn['m_bn4'](a, trainable=train)
-            a = leaky_relu(a)
+            a = tf.nn.relu(a)
             a = tf.nn.max_pool(a, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='VALID')
 
             # conv5
             a = conv2d(a, 256, k_h=3, k_w=3, d_h=1, d_w=1, scope='conv5')
             a = self.bn['m_bn5'](a, trainable=train)
-            a = leaky_relu(a)
+            a = tf.nn.relu(a)
             a = tf.nn.max_pool(a, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='VALID')
 
             # linear1
-            batch_size = a.get_shape().as_list()[0]
-            a = linear(tf.reshape(a, [batch_size,-1]), 512, scope='fc6')
+            a = linear(tf.reshape(a, [self.batch_size,-1]), 512, scope='fc6')
             a = self.bn['m_bn6'](a, trainable=train)
-            a = leaky_relu(a)
+            a = tf.nn.relu(a)
 
             # linear2
             a = linear(a, 64, scope='fc7')
             a = self.bn['m_bn7'](a, trainable=train)
-            a = leaky_relu(a)
+            a = tf.nn.relu(a)
 
             a = linear(a, 2, scope='fc_out')
 
-            return tf.tanh(a)
+            return tf.sigmoid(a)
 
-    def train(self, num_iterations = 100000, mode='full'):
+    def train(self, num_iterations = 2000, mode='full'):
         # Optimizer
         if mode == 'full':
             train_vars  = self.full_vars
@@ -291,7 +308,7 @@ class colorization(object):
             duration = time.time() - start_time
 
             # Write the summaries and print an overview fairly often.
-            if (step > 1 and step % 20 == 0) or (step + 1) == num_iterations:
+            if (step > 1 and step % 10 == 0) or (step + 1) == num_iterations:
                 # Print status to stdout.
                 print('Step %d: loss = %.4f (%.3f sec)' % (step, loss, duration))
                 summary_str = self.sess.run(train_summ, feed_dict=feed_dict)
@@ -299,19 +316,21 @@ class colorization(object):
                 self.summary_writer.flush()
 
             # Save a checkpoint.
-            if (step > 1 and (step + 1) % 1000 == 0) or (step + 1) == num_iterations:
+            if (step > 1 and (step + 1) % 200 == 0) or (step + 1) == num_iterations:
                 self.save_checkpoint(mode, step)
 
             if mode == 'full':
                 # Draw samples
-                if (step > 1 and (step + 1) % 1000 == 0) or (step + 1) == num_iterations:
-                    samples, loss = self.sess.run([self.full_sample, self.full_sample_loss], feed_dict=feed_dict)
+                if (step > 1 and (step + 1) % 200 == 0) or (step + 1) == num_iterations:
+                    input_batch, target_batch = self.get_minibatch(mode=mode, train=False)
+                    test_feed_dict={ self.input: input_batch, target: target_batch }
+                    samples, loss = self.sess.run([self.full_sample, self.full_sample_loss], feed_dict=test_feed_dict)
                     self.draw_samples(input_batch, samples, target_batch, step)
                     print("[Sample] loss: %.8f" % loss)
 
             # Test
-            if (step > 1 and (step + 1) % 5000 == 0) or (step + 1) == num_iterations:
-                self.val_perm = np.random.permutation(np.arange(len(self.val_roidb)))
+            if (step > 1 and (step + 1) % 200 == 0) or (step + 1) == num_iterations:
+                self.val_perm = np.random.permutation(range(len(self.val_roidb)))
                 self.val_cur = 0
 
                 self.sess.run(tf.assign(test_loss_tmp, tf_zero))
@@ -329,7 +348,7 @@ class colorization(object):
                 self.summary_writer.add_summary(t_log, step)
                 self.summary_writer.flush()
 
-    def draw_samples(inputs, samples, targets, step):
+    def draw_samples(self, inputs, samples, targets, step):
         # create the output dir if it doesn't exist
         output_dir = os.path.join(self.output_dir, 'samples')
         if not os.path.exists(output_dir):
@@ -337,19 +356,21 @@ class colorization(object):
 
         nr_samples = inputs.shape[0]
         for i in xrange(nr_samples):
-            L = (inputs[i,:,:,:] + 128).astype(np.int16)
-            sA = ((sample[i,:,:,0] + 1) * 128).astype(np.int16)
-            sB = ((sample[i,:,:,1] + 1) * 128).astype(np.int16)
-            gA = ((targets[i,:,:,0] + 1) * 128).astype(np.int16)
-            gB = ((targets[i,:,:,1] + 1) * 128).astype(np.int16)
+            L  = np.maximum(np.minimum(inputs[i,:,:,:] + 128,    255), 0)
+            sA = np.maximum(np.minimum((samples[i,:,:,0] * 255), 255), 0)
+            sB = np.maximum(np.minimum((samples[i,:,:,1] * 255), 255), 0)
+            gA = np.maximum(np.minimum((targets[i,:,:,0] * 255), 255), 0)
+            gB = np.maximum(np.minimum((targets[i,:,:,1] * 255), 255), 0) 
             sample_im = cv2.merge((L, sA, sB))
             gt_im     = cv2.merge((L, gA, gB))
+            sample_im = sample_im.astype(np.uint8)
+            gt_im     = gt_im.astype(np.uint8)
             sample_im = cv2.cvtColor(sample_im, cv2.COLOR_LAB2BGR)
             gt_im     = cv2.cvtColor(gt_im, cv2.COLOR_LAB2BGR)
 
             im = np.zeros((self.train_shape[0], 2 * self.train_shape[1], 3), dtype=np.int16)
-            im[:,:self.train_shape[1],:] = gt_im
-            im[:,self.train_shape[1]:,:] = sample_im
+            im[:,:self.train_shape[1],:] = sample_im
+            im[:,self.train_shape[1]:,:] = gt_im
 
             im_name = '%08d_%04d.jpg'%(step, i)
             output_path = os.path.join(output_dir, im_name)
@@ -357,9 +378,11 @@ class colorization(object):
 
 
 if __name__ == '__main__':
+    os.environ["CUDA_VISIBLE_DEVICES"]="2"
     facedb = imdb('face_images')
     #facedb.draw_roidb('output')
 
     with tf.Session() as sess:
-        handler = colorization(sess, facedb, 4, [128, 128], 'output/')
-        handler.train(mode='mean')
+        handler = colorization(sess, facedb, 32, [128, 128], 'output/')
+        handler.train(mode='full')
+        #handler.get_minibatch(vis=True)
