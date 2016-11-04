@@ -27,8 +27,16 @@ class colorization(object):
         self.train_cur = 0
         self.val_cur   = 0
 
+<<<<<<< HEAD
         """batch_normalization"""
         for i in xrange(1, 3):
+||||||| merged common ancestors
+        # batch_normalization
+        for i in xrange(1,5):
+=======
+        """batch_normalization"""
+        for i in xrange(1,5):
+>>>>>>> 7bd0343eda1d433075b3facc120ecf60826727fe
             bn_name = 'cbn%d'%i
             self.bn['f_cbn%d'%i] = batch_normalization(scope=bn_name)
         for i in xrange(2, 0, -1):
@@ -321,10 +329,20 @@ class colorization(object):
 
             if mode == 'full':
                 # Draw samples
+<<<<<<< HEAD
                 if (step > 1 and (step + 1) % 200 == 0) or (step + 1) == num_iterations:
                     input_batch, target_batch = self.get_minibatch(mode=mode, train=True)
                     test_feed_dict={ self.input: input_batch, target: target_batch }
                     samples, loss = self.sess.run([self.full_sample, self.full_sample_loss], feed_dict=test_feed_dict)
+||||||| merged common ancestors
+                if (step > 1 and (step + 1) % 1000 == 0) or (step + 1) == num_iterations:
+                    samples, loss = self.sess.run([self.full_sample, self.full_sample_loss], feed_dict=feed_dict)
+=======
+                if (step > 1 and (step + 1) % 200 == 0) or (step + 1) == num_iterations:
+                    input_batch, target_batch = self.get_minibatch(mode=mode, train=False)
+                    test_feed_dict={ self.input: input_batch, target: target_batch }
+                    samples, loss = self.sess.run([self.full_sample, self.full_sample_loss], feed_dict=test_feed_dict)
+>>>>>>> 7bd0343eda1d433075b3facc120ecf60826727fe
                     self.draw_samples(input_batch, samples, target_batch, step)
                     print("[Sample] loss: %.8f" % loss)
 
