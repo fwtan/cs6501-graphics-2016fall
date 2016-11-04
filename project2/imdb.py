@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import os, sys
+import os,  sys
 import cv2, copy
 import math, cPickle
 import numpy as np
@@ -18,11 +18,18 @@ class imdb(object):
         self.n_val = int(0.1 * n_all)
         self.val_roidb   = roidb[:self.n_val]
         self.train_roidb = roidb[self.n_val:]
+        
+        self.n_train  = len(self.train_roidb)
+        self.append_cropped_images()
+        self.n_train  = len(self.train_roidb)
+        self.append_cropped_images()
+        self.n_train  = len(self.train_roidb)
+        self.append_flipped_images()
+        self.n_train  = len(self.train_roidb)
+        self.append_scaled_images()
         self.n_train  = len(self.train_roidb)
 
-        self.append_flipped_images()
-        self.append_cropped_images()
-        self.append_scaled_images()
+        print(self.n_train)
 
     def load_dataset(self, name, ext='.jpg'):
         fnames = [f for f in os.listdir(osp.join('data', name)) if osp.splitext(osp.basename(f))[-1] == ext]
@@ -71,7 +78,7 @@ class imdb(object):
             if roi['flipped']:
                 img = cv2.flip(img, 1)
 
-            img = (img.astype(np.float32) * roi['scale']).astype(np.int16)
+            img = np.minimum(np.maximum(0, img.astype(np.float32) * roi['scale']), 255).astype(np.uint16)
 
             i += 1
             output_path = os.path.join(output_dir, '%05d_'%i + osp.basename(roi['image']))
@@ -79,5 +86,5 @@ class imdb(object):
 
 
 if __name__ == '__main__':
-    facedb = imdb('face_images')
+    facedb = imdb('cow_on_grass')
     facedb.draw_roidb('output')
