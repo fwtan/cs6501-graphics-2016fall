@@ -322,7 +322,7 @@ class colorization(object):
             if mode == 'full':
                 # Draw samples
                 if (step > 1 and (step + 1) % 200 == 0) or (step + 1) == num_iterations:
-                    input_batch, target_batch = self.get_minibatch(mode=mode, train=True)
+                    input_batch, target_batch = self.get_minibatch(mode=mode, train=False)
                     test_feed_dict={ self.input: input_batch, target: target_batch }
                     samples, loss = self.sess.run([self.full_sample, self.full_sample_loss], feed_dict=test_feed_dict)
                     self.draw_samples(input_batch, samples, target_batch, step)
@@ -360,7 +360,7 @@ class colorization(object):
             sA = np.maximum(np.minimum((samples[i,:,:,0] * 255), 255), 0)
             sB = np.maximum(np.minimum((samples[i,:,:,1] * 255), 255), 0)
             gA = np.maximum(np.minimum((targets[i,:,:,0] * 255), 255), 0)
-            gB = np.maximum(np.minimum((targets[i,:,:,1] * 255), 255), 0) 
+            gB = np.maximum(np.minimum((targets[i,:,:,1] * 255), 255), 0)
             sample_im = cv2.merge((L, sA, sB))
             gt_im     = cv2.merge((L, gA, gB))
             sample_im = sample_im.astype(np.uint8)
@@ -379,7 +379,7 @@ class colorization(object):
 
 if __name__ == '__main__':
     os.environ["CUDA_VISIBLE_DEVICES"]="2"
-    facedb = imdb('face_images')
+    facedb = imdb('banana')
     #facedb.draw_roidb('output')
 
     with tf.Session() as sess:
